@@ -2,10 +2,17 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Expense } from '../types';
-import { format, isSameMonth, parseISO } from 'date-fns';
+import { 
+  format, isSameMonth, parseISO, startOfWeek, endOfWeek, 
+  isWithinInterval, isSameDay, addDays, addWeeks, addMonths, 
+  startOfMonth, endOfMonth 
+} from 'date-fns';
+import { vi } from 'date-fns/locale';
 import { ExpenseModal } from '../components/ExpenseModal';
-import { Plus, Pencil, Trash2, Calendar, Search, History, Wallet, AlertTriangle, CheckCircle, Clock, User, ArrowRight, Lock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Calendar, Search, History, Wallet, AlertTriangle, CheckCircle, Clock, User, ArrowRight, Lock, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { ListFilter, FilterOption } from '../components/ListFilter';
+
+type FilterMode = 'day' | 'week' | 'month';
 
 export const Expenses: React.FC = () => {
   const { expenses, deleteExpense, settings, shifts } = useAppContext();
@@ -16,7 +23,10 @@ export const Expenses: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
+  
+  // New Filter States
+  const [filterMode, setFilterMode] = useState<FilterMode>('month');
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   const categoryOptions: FilterOption[] = useMemo(() => {
     return [
@@ -28,21 +38,55 @@ export const Expenses: React.FC = () => {
     ];
   }, [settings.expense_categories]);
 
+  // Navigation Handlers
+  const handleNavigate = (direction: number) => {
+      if (filterMode === 'day') setCurrentDate(prev => addDays(prev, direction));
+      else if (filterMode === 'week') setCurrentDate(prev => addWeeks(prev, direction));
+      else setCurrentDate(prev => addMonths(prev, direction));
+  };
+
+  const getRangeLabel = () => {
+      if (filterMode === 'day') return format(currentDate, 'dd/MM/yyyy');
+      if (filterMode === 'month') return `Tháng ${format(currentDate, 'MM/yyyy')}`;
+      
+      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+      const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+      return `${format(start, 'dd/MM')} - ${format(end, 'dd/MM/yyyy')}`;
+  };
+
   const filteredExpenses = useMemo(() => {
-     const [year, month] = selectedMonth.split('-').map(Number);
-     const filterDate = new Date(year, month - 1);
+     let start: Date, end: Date;
+
+     if (filterMode === 'day') {
+         start = new Date(currentDate); start.setHours(0,0,0,0);
+         end = new Date(currentDate); end.setHours(23,59,59,999);
+     } else if (filterMode === 'week') {
+         start = startOfWeek(currentDate, { weekStartsOn: 1 });
+         end = endOfWeek(currentDate, { weekStartsOn: 1 });
+     } else {
+         start = startOfMonth(currentDate);
+         end = endOfMonth(currentDate);
+     }
      
      return expenses.filter(e => {
-        const eDate = new Date(e.expenseDate);
-        const matchesMonth = isSameMonth(eDate, filterDate) && eDate.getFullYear() === year;
+        const eDate = parseISO(e.expenseDate);
+        
+        // 1. Time Filter
+        let matchesTime = false;
+        if (filterMode === 'day') matchesTime = isSameDay(eDate, currentDate);
+        else matchesTime = isWithinInterval(eDate, { start, end });
+
+        // 2. Category Filter
         const matchesCategory = categoryFilter === 'All' || e.expenseCategory === categoryFilter;
+        
+        // 3. Search Filter
         const matchesSearch = e.expenseContent.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               e.facilityName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               (e.note || '').toLowerCase().includes(searchTerm.toLowerCase());
         
-        return matchesMonth && matchesCategory && matchesSearch;
+        return matchesTime && matchesCategory && matchesSearch;
      });
-  }, [expenses, selectedMonth, categoryFilter, searchTerm]);
+  }, [expenses, currentDate, filterMode, categoryFilter, searchTerm]);
 
   const totalExpense = useMemo(() => {
     return filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -93,27 +137,35 @@ export const Expenses: React.FC = () => {
       {/* --- TAB 1: EXPENSES CONTENT --- */}
       {activeTab === 'expenses' && (
         <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 bg-rose-50 rounded-lg text-rose-600"><Wallet size={24}/></div>
+            <div className="flex flex-col xl:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-2 w-full xl:w-auto">
+                    <div className="p-3 bg-rose-50 rounded-xl text-rose-600 border border-rose-100"><Wallet size={24}/></div>
                     <div>
-                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng chi tháng {selectedMonth.split('-')[1]}/{selectedMonth.split('-')[0]}</div>
-                        <div className="text-xl font-black text-rose-600">{totalExpense.toLocaleString()} ₫</div>
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng chi ({getRangeLabel()})</div>
+                        <div className="text-2xl font-black text-rose-600">{totalExpense.toLocaleString()} ₫</div>
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 shadow-inner flex-1 md:flex-none">
-                        <Calendar size={16} className="text-slate-400"/>
-                        <input 
-                            type="month" 
-                            value={selectedMonth} 
-                            onChange={e => setSelectedMonth(e.target.value)}
-                            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer w-full"
-                        />
+                <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:w-auto">
+                    {/* Filter Mode Switcher */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button onClick={() => setFilterMode('day')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterMode === 'day' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Ngày</button>
+                        <button onClick={() => setFilterMode('week')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterMode === 'week' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Tuần</button>
+                        <button onClick={() => setFilterMode('month')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterMode === 'month' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Tháng</button>
                     </div>
-                    <button onClick={handleAdd} className="bg-brand-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-brand-700 transition-all shadow-lg shadow-brand-100 active:scale-95 whitespace-nowrap">
-                        <Plus size={20} /> <span className="hidden md:inline">Thêm chi phí</span>
+
+                    {/* Date Navigator */}
+                    <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-inner">
+                        <button onClick={() => handleNavigate(-1)} className="p-2 hover:bg-white text-slate-500 border-r border-slate-200 transition-colors"><ChevronLeft size={18}/></button>
+                        <div className="px-4 py-2 text-sm font-bold text-slate-700 min-w-[140px] text-center flex items-center justify-center gap-2">
+                            <Calendar size={14} className="text-slate-400"/>
+                            {getRangeLabel()}
+                        </div>
+                        <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-white text-slate-500 border-l border-slate-200 transition-colors"><ChevronRight size={18}/></button>
+                    </div>
+
+                    <button onClick={handleAdd} className="w-full md:w-auto bg-brand-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-brand-700 transition-all shadow-lg shadow-brand-100 active:scale-95 whitespace-nowrap">
+                        <Plus size={20} /> <span className="hidden md:inline">Thêm khoản chi</span>
                     </button>
                 </div>
             </div>
@@ -144,7 +196,7 @@ export const Expenses: React.FC = () => {
                         {filteredExpenses.sort((a,b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).map(e => (
                             <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="p-lg">
-                                <div className="font-bold text-slate-700">{format(new Date(e.expenseDate), 'dd/MM/yyyy')}</div>
+                                <div className="font-bold text-slate-700">{format(parseISO(e.expenseDate), 'dd/MM/yyyy')}</div>
                                 <div className="text-[10px] text-slate-400 font-medium">ID: {e.id}</div>
                                 </td>
                                 <td className="p-lg">
@@ -194,7 +246,7 @@ export const Expenses: React.FC = () => {
                         <div className="flex justify-between items-start mb-2">
                             <div>
                                 <div className="font-bold text-slate-800">{e.expenseContent}</div>
-                                <div className="text-xs text-slate-500">{format(new Date(e.expenseDate), 'dd/MM/yyyy')} - {e.facilityName}</div>
+                                <div className="text-xs text-slate-500">{format(parseISO(e.expenseDate), 'dd/MM/yyyy')} - {e.facilityName}</div>
                             </div>
                             <span className="font-black text-rose-600">-{Number(e.amount).toLocaleString()}</span>
                         </div>
