@@ -75,7 +75,7 @@ interface AppContextType {
   addInventoryTransaction: (item: InventoryTransaction) => Promise<void>;
   
   openShift: (startCash: number) => Promise<void>;
-  closeShift: (endCash: number, note: string) => Promise<void>;
+  closeShift: (endCash: number, note: string, stats: { revenue: number; expense: number; expected: number }) => Promise<void>;
   
   clockIn: (facilityId: string, lat: number, lng: number) => Promise<{success: boolean, message: string}>;
   clockOut: () => Promise<{success: boolean, message: string}>;
@@ -322,16 +322,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       refreshData();
   };
 
-  const closeShift = async (endCash: number, note: string) => {
+  const closeShift = async (endCash: number, note: string, stats: { revenue: number; expense: number; expected: number }) => {
       const active = shifts.find(s => s.staff_id === currentUser?.id && s.status === 'Open');
-      if (active) {
+      if (active && currentUser) {
           await storageService.updateShift({
               ...active,
               end_time: new Date().toISOString(),
               end_cash_actual: endCash,
-              difference: endCash - active.end_cash_expected,
+              total_revenue_cash: stats.revenue,
+              total_expense_cash: stats.expense,
+              end_cash_expected: stats.expected,
+              difference: endCash - stats.expected,
               note,
-              status: 'Closed'
+              status: 'Closed',
+              closed_by_id: currentUser.id,
+              closed_by_name: currentUser.collaboratorName
           });
           refreshData();
       }

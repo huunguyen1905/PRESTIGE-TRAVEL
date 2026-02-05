@@ -292,6 +292,9 @@ export interface Shift {
   difference?: number; 
   note?: string;
   status: 'Open' | 'Closed';
+  // Audit Trail
+  closed_by_id?: string;
+  closed_by_name?: string;
 }
 
 // NEW: Bank Account Interface
