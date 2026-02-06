@@ -186,6 +186,7 @@ export const Expenses: React.FC = () => {
                     <thead className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase font-extrabold text-[10px] tracking-widest">
                         <tr>
                             <th className="p-lg">Ngày chi</th>
+                            <th className="p-lg">Người Tạo</th>
                             <th className="p-lg">Cơ sở / Phân loại</th>
                             <th className="p-lg">Nội dung</th>
                             <th className="p-lg text-right">Số tiền</th>
@@ -196,37 +197,45 @@ export const Expenses: React.FC = () => {
                         {filteredExpenses.sort((a,b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).map(e => (
                             <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="p-lg">
-                                <div className="font-bold text-slate-700">{format(parseISO(e.expenseDate), 'dd/MM/yyyy')}</div>
-                                <div className="text-[10px] text-slate-400 font-medium">ID: {e.id}</div>
+                                    <div className="font-bold text-slate-700">{format(parseISO(e.expenseDate), 'dd/MM/yyyy')}</div>
+                                    <div className="text-[10px] text-slate-400 font-medium">ID: {e.id}</div>
                                 </td>
                                 <td className="p-lg">
-                                <div className="text-slate-800 font-bold text-xs">{e.facilityName}</div>
-                                <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-500 border border-slate-200 uppercase mt-1 inline-block tracking-wider">
-                                    {e.expenseCategory}
-                                </span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold">
+                                            {(e.creator_name || 'S').charAt(0)}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-600">{e.creator_name || 'System/Admin'}</span>
+                                    </div>
                                 </td>
                                 <td className="p-lg">
-                                <div className="text-slate-800 font-bold">{e.expenseContent}</div>
-                                {e.note && <div className="text-xs text-slate-400 mt-1 italic line-clamp-1">{e.note}</div>}
+                                    <div className="text-slate-800 font-bold text-xs">{e.facilityName}</div>
+                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-500 border border-slate-200 uppercase mt-1 inline-block tracking-wider">
+                                        {e.expenseCategory}
+                                    </span>
+                                </td>
+                                <td className="p-lg">
+                                    <div className="text-slate-800 font-bold">{e.expenseContent}</div>
+                                    {e.note && <div className="text-xs text-slate-400 mt-1 italic line-clamp-1">{e.note}</div>}
                                 </td>
                                 <td className="p-lg text-right font-black text-rose-600 text-lg">
-                                -{Number(e.amount).toLocaleString()} ₫
+                                    -{Number(e.amount).toLocaleString()} ₫
                                 </td>
                                 <td className="p-lg text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                    <button onClick={() => handleEdit(e)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Sửa">
-                                        <Pencil size={18} />
-                                    </button>
-                                    <button onClick={() => { if(confirm('Bạn có chắc muốn xóa khoản chi này?')) deleteExpense(e.id); }} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Xóa">
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button onClick={() => handleEdit(e)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Sửa">
+                                            <Pencil size={18} />
+                                        </button>
+                                        <button onClick={() => { if(confirm('Bạn có chắc muốn xóa khoản chi này?')) deleteExpense(e.id); }} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Xóa">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
                         {filteredExpenses.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="p-2xl text-center">
+                                <td colSpan={6} className="p-2xl text-center">
                                 <div className="flex flex-col items-center gap-md text-slate-400">
                                     <Search size={48} strokeWidth={1} />
                                     <p className="font-bold">Không tìm thấy chi phí phù hợp.</p>
@@ -258,6 +267,9 @@ export const Expenses: React.FC = () => {
                                 <button onClick={() => handleEdit(e)} className="p-2 text-blue-600 bg-blue-50 rounded-lg"><Pencil size={16}/></button>
                                 <button onClick={() => { if(confirm('Xóa?')) deleteExpense(e.id); }} className="p-2 text-rose-600 bg-rose-50 rounded-lg"><Trash2 size={16}/></button>
                             </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-50 flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            <User size={10}/> Tạo bởi: {e.creator_name || 'System'}
                         </div>
                     </div>
                 ))}

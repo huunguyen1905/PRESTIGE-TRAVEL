@@ -147,6 +147,9 @@ export interface Expense {
   expenseContent: string;
   amount: number;
   note?: string;
+  // Audit fields
+  created_by?: string;
+  creator_name?: string;
 }
 
 export type ItemCategory = 'Minibar' | 'Amenity' | 'Linen' | 'Voucher' | 'Service' | 'Asset';

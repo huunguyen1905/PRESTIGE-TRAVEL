@@ -293,7 +293,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateService = async (item: ServiceItem) => { await storageService.updateService(item); refreshData(); };
   const deleteService = async (id: string) => { await storageService.deleteService(id); refreshData(); };
 
-  const addExpense = async (item: Expense) => { await storageService.addExpense(item); refreshData(); };
+  // UPDATED: Automatically attach user info
+  const addExpense = async (item: Expense) => { 
+      const expenseWithUser = {
+          ...item,
+          created_by: item.created_by || currentUser?.id,
+          creator_name: item.creator_name || currentUser?.collaboratorName || 'System'
+      };
+      await storageService.addExpense(expenseWithUser); 
+      refreshData(); 
+  };
+  
   const updateExpense = async (item: Expense) => { await storageService.updateExpense(item); refreshData(); };
   const deleteExpense = async (id: string) => { await storageService.deleteExpense(id); refreshData(); };
 
@@ -318,7 +328,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               expenseCategory: 'Nhập hàng',
               expenseContent: `Nhập kho hàng loạt (${items.length} món)`,
               amount: totalAmount,
-              note: `Bằng chứng: ${evidenceUrl || 'N/A'}. ${fullNote}`
+              note: `Bằng chứng: ${evidenceUrl || 'N/A'}. ${fullNote}`,
+              created_by: currentUser?.id,
+              creator_name: currentUser?.collaboratorName
           };
           await storageService.addExpense(expense);
       }
@@ -485,7 +497,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               expenseCategory: 'Lương nhân viên',
               expenseContent: `Chi ứng lương cho ${staffName}`,
               amount: advance.amount,
-              note: `Tự động tạo từ yêu cầu ứng lương ${advance.id}`
+              note: `Tự động tạo từ yêu cầu ứng lương ${advance.id}`,
+              created_by: currentUser?.id,
+              creator_name: currentUser?.collaboratorName
           };
           await storageService.addExpense(expense);
           notify('success', `Đã duyệt và tạo phiếu chi ${advance.amount.toLocaleString()}đ`);
@@ -656,7 +670,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   staff_name: currentUser?.collaboratorName || 'System',
                   item_id: service.id,
                   item_name: service.name,
-                  type: 'MINIBAR_SOLD',
+                  type: service.price > 0 ? 'MINIBAR_SOLD' : 'AMENITY_USED',
                   quantity: item.qty,
                   price: service.costPrice || 0,
                   total: (service.costPrice || 0) * item.qty,
