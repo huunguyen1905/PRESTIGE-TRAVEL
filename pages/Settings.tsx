@@ -456,9 +456,9 @@ export const Settings: React.FC = () => {
                                      {item.itemId} <b className="text-brand-600">x{item.quantity}</b>
                                  </span>
                              ))}
-                             {(recipe.items || []).length > 5 && (
+                             {(recipe.items?.length ?? 0) > 5 && (
                                  <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-500 font-bold">
-                                     +{((recipe.items || []).length - 5)}
+                                     +{((recipe.items?.length ?? 0) - 5)}
                                  </span>
                              )}
                          </div>

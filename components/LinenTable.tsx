@@ -7,7 +7,7 @@ import { LaundryTicketModal } from './LaundryTicketModal';
 import { Modal } from './Modal';
 
 export const LinenTable: React.FC = () => {
-  const { services, updateService, deleteService, addInventoryTransaction, currentUser, facilities, notify, refreshData } = useAppContext();
+  const { services, updateService, deleteService, addInventoryTransaction, currentUser, facilities, notify, refreshData, rooms, roomRecipes, bookings } = useAppContext();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isLaundryModalOpen, setLaundryModalOpen] = useState(false);
@@ -16,6 +16,39 @@ export const LinenTable: React.FC = () => {
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ServiceItem>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- CALCULATION LOGIC ---
+  // Tính toán số lượng chuẩn (Standard) và đang mượn (Lending) cho từng item
+  const itemStats = useMemo(() => {
+      const standards: Record<string, number> = {};
+      const lendings: Record<string, number> = {};
+
+      // 1. Tính tổng định mức chuẩn dựa trên số lượng phòng & công thức (Recipe)
+      rooms.forEach(room => {
+          // Chỉ tính các phòng hoạt động (không phải Sửa chữa, hoặc tùy nghiệp vụ có thể tính luôn)
+          // Ở đây tính hết để đảm bảo tài sản cố định phải đủ cho cả khách sạn
+          if (room.type && roomRecipes[room.type]) {
+              roomRecipes[room.type].items.forEach(i => {
+                  // i.itemId là ID của ServiceItem
+                  standards[i.itemId] = (standards[i.itemId] || 0) + i.quantity;
+              });
+          }
+      });
+
+      // 2. Tính tổng số lượng khách đang mượn (Booking CheckedIn)
+      bookings.filter(b => b.status === 'CheckedIn').forEach(b => {
+          try {
+              const items = JSON.parse(b.lendingJson || '[]');
+              items.forEach((i: any) => {
+                  if (i.quantity > 0) {
+                      lendings[i.item_id] = (lendings[i.item_id] || 0) + i.quantity;
+                  }
+              });
+          } catch(e) {}
+      });
+
+      return { standards, lendings };
+  }, [rooms, roomRecipes, bookings]);
 
   // Filter Linen Items
   const linenItems = useMemo(() => {
@@ -163,7 +196,7 @@ export const LinenTable: React.FC = () => {
                 <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px] tracking-widest border-b border-slate-200 sticky top-0 z-10">
                     <tr>
                         <th className="p-4 pl-6 w-[20%]">Tên Đồ Vải</th>
-                        <th className="p-4 text-center bg-blue-50/50 text-blue-700 w-[10%]">Đang Dùng</th>
+                        <th className="p-4 text-center bg-blue-50/50 text-blue-700 w-[15%]">Đang Dùng (Chi tiết)</th>
                         <th className="p-4 text-center bg-emerald-50/50 text-emerald-700 w-[10%]">Kho Sạch</th>
                         <th className="p-4 text-center bg-rose-50/50 text-rose-700 w-[10%]">Kho Bẩn</th>
                         <th className="p-4 text-center bg-purple-50/50 text-purple-700 w-[12%] border-x-2 border-purple-100">
@@ -189,14 +222,38 @@ export const LinenTable: React.FC = () => {
                         const dbTotal = item.totalassets || 0;
                         const variance = actualTotal - dbTotal;
 
+                        // Calculated Stats
+                        const stdQty = itemStats.standards[item.id] || 0;
+                        const lendingQty = itemStats.lendings[item.id] || 0;
+                        
+                        // Logic suy luận: Số trong phòng (Lý thuyết) = Chuẩn + Khách mượn
+                        // Nếu thực tế (inRoom) < Lý thuyết => Thiếu
+                        const theoreticalInRoom = stdQty + lendingQty;
+                        const missingInRoom = theoreticalInRoom - inRoom;
+
                         return (
                             <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                                 <td className="p-4 pl-6">
                                     <div className="font-bold text-slate-800 line-clamp-1" title={item.name}>{item.name}</div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">{item.unit}</div>
                                 </td>
-                                <td className="p-4 text-center bg-blue-50/20 font-bold text-blue-700">
-                                    {inRoom}
+                                <td className="p-4 text-center bg-blue-50/20">
+                                    <div className="flex flex-col items-center">
+                                        <span className="font-black text-blue-700 text-lg">{inRoom}</span>
+                                        <div className="flex flex-col items-center mt-1 space-y-1 w-full px-2">
+                                            <div className="text-[10px] text-blue-400 font-medium">Chuẩn: {stdQty}</div>
+                                            {lendingQty > 0 && (
+                                                <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                                                    +{lendingQty} Mượn
+                                                </span>
+                                            )}
+                                            {missingInRoom > 0 && (
+                                                <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full border border-rose-200 animate-pulse">
+                                                    -{missingInRoom} Thiếu
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
                                 </td>
                                 <td className="p-4 text-center bg-emerald-50/20 font-bold text-emerald-700">
                                     {clean}
