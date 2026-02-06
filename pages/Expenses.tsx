@@ -9,13 +9,13 @@ import {
 } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { ExpenseModal } from '../components/ExpenseModal';
-import { Plus, Pencil, Trash2, Calendar, Search, History, Wallet, AlertTriangle, CheckCircle, Clock, User, ArrowRight, Lock, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Plus, Pencil, Trash2, Calendar, Search, History, Wallet, AlertTriangle, CheckCircle, Clock, User, ArrowRight, Lock, ChevronLeft, ChevronRight, Filter, Bot } from 'lucide-react';
 import { ListFilter, FilterOption } from '../components/ListFilter';
 
 type FilterMode = 'day' | 'week' | 'month';
 
 export const Expenses: React.FC = () => {
-  const { expenses, deleteExpense, settings, shifts } = useAppContext();
+  const { expenses, deleteExpense, settings, shifts, collaborators, currentUser } = useAppContext();
   const [activeTab, setActiveTab] = useState<'expenses' | 'shifts'>('expenses');
   
   // --- EXPENSE LOGIC ---
@@ -23,6 +23,9 @@ export const Expenses: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  
+  // New Creator Filter
+  const [creatorFilter, setCreatorFilter] = useState('All');
   
   // New Filter States
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -37,6 +40,30 @@ export const Expenses: React.FC = () => {
       }))
     ];
   }, [settings.expense_categories]);
+
+  const creatorOptions: FilterOption[] = useMemo(() => {
+      // Extract unique creators from expenses
+      const uniqueCreators = new Map<string, string>();
+      expenses.forEach(e => {
+          if (e.created_by_name) {
+              uniqueCreators.set(e.created_by_name, e.created_by_name);
+          }
+      });
+      // Also add 'System' if present in data implicitly or explicitly
+      if (expenses.some(e => !e.created_by_name || e.created_by_name === 'System')) {
+          uniqueCreators.set('System', 'System (Tự động)');
+      }
+
+      const options = Array.from(uniqueCreators.entries()).map(([val, label]) => ({
+          label: label,
+          value: val
+      }));
+
+      return [
+          { label: 'Tất cả người tạo', value: 'All' },
+          ...options
+      ];
+  }, [expenses]);
 
   // Navigation Handlers
   const handleNavigate = (direction: number) => {
@@ -79,14 +106,18 @@ export const Expenses: React.FC = () => {
         // 2. Category Filter
         const matchesCategory = categoryFilter === 'All' || e.expenseCategory === categoryFilter;
         
-        // 3. Search Filter
+        // 3. Creator Filter
+        const creatorName = e.created_by_name || 'System';
+        const matchesCreator = creatorFilter === 'All' || creatorName === creatorFilter;
+
+        // 4. Search Filter
         const matchesSearch = e.expenseContent.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               e.facilityName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               (e.note || '').toLowerCase().includes(searchTerm.toLowerCase());
         
-        return matchesTime && matchesCategory && matchesSearch;
+        return matchesTime && matchesCategory && matchesCreator && matchesSearch;
      });
-  }, [expenses, currentDate, filterMode, categoryFilter, searchTerm]);
+  }, [expenses, currentDate, filterMode, categoryFilter, creatorFilter, searchTerm]);
 
   const totalExpense = useMemo(() => {
     return filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -100,6 +131,13 @@ export const Expenses: React.FC = () => {
   const handleEdit = (e: Expense) => {
     setEditingExpense(e);
     setModalOpen(true);
+  };
+
+  // Helper to find staff color
+  const getStaffColor = (name?: string) => {
+      if (!name || name === 'System') return '#94a3b8'; // Slate for system
+      const staff = collaborators.find(c => c.collaboratorName === name);
+      return staff?.color || '#3b82f6';
   };
 
   // --- SHIFTS LOGIC ---
@@ -177,6 +215,9 @@ export const Expenses: React.FC = () => {
                 selectedFilter={categoryFilter}
                 onFilterChange={setCategoryFilter}
                 placeholder="Tìm theo nội dung, cơ sở, ghi chú..."
+                secondaryOptions={creatorOptions}
+                selectedSecondaryFilter={creatorFilter}
+                onSecondaryFilterChange={setCreatorFilter}
             />
 
             {/* Desktop Table */}
@@ -188,6 +229,7 @@ export const Expenses: React.FC = () => {
                             <th className="p-lg">Ngày chi</th>
                             <th className="p-lg">Cơ sở / Phân loại</th>
                             <th className="p-lg">Nội dung</th>
+                            <th className="p-lg">Người thực hiện</th>
                             <th className="p-lg text-right">Số tiền</th>
                             <th className="p-lg text-center">Thao tác</th>
                         </tr>
@@ -209,6 +251,20 @@ export const Expenses: React.FC = () => {
                                 <div className="text-slate-800 font-bold">{e.expenseContent}</div>
                                 {e.note && <div className="text-xs text-slate-400 mt-1 italic line-clamp-1">{e.note}</div>}
                                 </td>
+                                {/* CREATED BY COLUMN */}
+                                <td className="p-lg">
+                                    <div className="flex items-center gap-2">
+                                        <div 
+                                            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm"
+                                            style={{ backgroundColor: getStaffColor(e.created_by_name) }}
+                                        >
+                                            {e.created_by_name ? e.created_by_name.charAt(0) : <Bot size={14}/>}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-600">
+                                            {e.created_by_name || 'System'}
+                                        </span>
+                                    </div>
+                                </td>
                                 <td className="p-lg text-right font-black text-rose-600 text-lg">
                                 -{Number(e.amount).toLocaleString()} ₫
                                 </td>
@@ -226,7 +282,7 @@ export const Expenses: React.FC = () => {
                         ))}
                         {filteredExpenses.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="p-2xl text-center">
+                                <td colSpan={6} className="p-2xl text-center">
                                 <div className="flex flex-col items-center gap-md text-slate-400">
                                     <Search size={48} strokeWidth={1} />
                                     <p className="font-bold">Không tìm thấy chi phí phù hợp.</p>
@@ -250,6 +306,17 @@ export const Expenses: React.FC = () => {
                             </div>
                             <span className="font-black text-rose-600">-{Number(e.amount).toLocaleString()}</span>
                         </div>
+                        
+                        <div className="flex items-center gap-2 mb-3 bg-slate-50 p-2 rounded-lg">
+                            <div 
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white"
+                                style={{ backgroundColor: getStaffColor(e.created_by_name) }}
+                            >
+                                {e.created_by_name ? e.created_by_name.charAt(0) : <Bot size={12}/>}
+                            </div>
+                            <span className="text-xs font-bold text-slate-600">{e.created_by_name || 'System'}</span>
+                        </div>
+
                         <div className="flex justify-between items-center mt-2">
                             <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-500 border border-slate-200 uppercase">
                                 {e.expenseCategory}

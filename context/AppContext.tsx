@@ -293,7 +293,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateService = async (item: ServiceItem) => { await storageService.updateService(item); refreshData(); };
   const deleteService = async (id: string) => { await storageService.deleteService(id); refreshData(); };
 
-  const addExpense = async (item: Expense) => { await storageService.addExpense(item); refreshData(); };
+  const addExpense = async (item: Expense) => { 
+      // Attach Audit Trail (Who Created This Expense)
+      const expenseWithAudit = {
+          ...item,
+          created_by_id: item.created_by_id || currentUser?.id || 'SYS',
+          created_by_name: item.created_by_name || currentUser?.collaboratorName || 'System'
+      };
+      await storageService.addExpense(expenseWithAudit); 
+      refreshData(); 
+  };
   const updateExpense = async (item: Expense) => { await storageService.updateExpense(item); refreshData(); };
   const deleteExpense = async (id: string) => { await storageService.deleteExpense(id); refreshData(); };
 
@@ -318,13 +327,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               expenseCategory: 'Nhập hàng',
               expenseContent: `Nhập kho hàng loạt (${items.length} món)`,
               amount: totalAmount,
-              note: `Bằng chứng: ${evidenceUrl || 'N/A'}. ${fullNote}`
+              note: `Bằng chứng: ${evidenceUrl || 'N/A'}. ${fullNote}`,
+              created_by_id: currentUser?.id,
+              created_by_name: currentUser?.collaboratorName
           };
           await storageService.addExpense(expense);
       }
 
       // 2. Loop Items
-      // We process sequentially to avoid potential race conditions on same row if duplicate items exist in array
       for (const item of items) {
           // Find current service state
           const service = services.find(s => s.id === item.itemId);
@@ -485,7 +495,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               expenseCategory: 'Lương nhân viên',
               expenseContent: `Chi ứng lương cho ${staffName}`,
               amount: advance.amount,
-              note: `Tự động tạo từ yêu cầu ứng lương ${advance.id}`
+              note: `Tự động tạo từ yêu cầu ứng lương ${advance.id}`,
+              created_by_id: currentUser?.id,
+              created_by_name: currentUser?.collaboratorName
           };
           await storageService.addExpense(expense);
           notify('success', `Đã duyệt và tạo phiếu chi ${advance.amount.toLocaleString()}đ`);
