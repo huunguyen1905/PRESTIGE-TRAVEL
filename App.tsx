@@ -139,11 +139,7 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS view TEXT;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS area NUMERIC;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS price_saturday NUMERIC;
 
--- 8. Cập nhật Expense (Truy vết người dùng)
-ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by_id TEXT;
-ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by_name TEXT;
-
--- 9. Cấp quyền
+-- 8. Cấp quyền
 ALTER TABLE room_recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;

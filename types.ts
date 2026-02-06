@@ -147,9 +147,6 @@ export interface Expense {
   expenseContent: string;
   amount: number;
   note?: string;
-  // Audit Trail Fields
-  created_by_id?: string;
-  created_by_name?: string;
 }
 
 export type ItemCategory = 'Minibar' | 'Amenity' | 'Linen' | 'Voucher' | 'Service' | 'Asset';
