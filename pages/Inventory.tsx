@@ -10,6 +10,7 @@ import { ServiceItem, Expense, ItemCategory, InventoryTransaction } from '../typ
 import { Modal } from '../components/Modal';
 import { BulkImportModal } from '../components/BulkImportModal';
 import { LaundryTicketModal } from '../components/LaundryTicketModal';
+import { LinenManager } from '../components/LinenManager';
 import { format, parseISO } from 'date-fns';
 
 export const Inventory: React.FC = () => {
@@ -58,6 +59,7 @@ export const Inventory: React.FC = () => {
       minStock: 5,
       category: 'Minibar',
       laundryStock: 0,
+      vendor_stock: 0,
       in_circulation: 0,
       totalassets: 0,
       default_qty: 0
@@ -71,8 +73,6 @@ export const Inventory: React.FC = () => {
       let matchesCategory = false;
       if (activeTab === 'Consumable') {
         matchesCategory = item.category === 'Minibar' || item.category === 'Amenity';
-      } else if (activeTab === 'Linen') {
-        matchesCategory = item.category === 'Linen'; // Only Linen
       } else if (activeTab === 'Asset') {
         matchesCategory = item.category === 'Asset'; // Only Asset
       } else if (activeTab === 'Service') {
@@ -104,12 +104,12 @@ export const Inventory: React.FC = () => {
 
   // ... (Stats Logic kept same) ...
   const stats = useMemo(() => {
-      // Basic Stats: Tính tổng giá trị dựa trên TỔNG TÀI SẢN (Sạch + Bẩn + Đang Dùng) thay vì chỉ Kho Sạch
+      // Basic Stats: Tính tổng giá trị dựa trên TỔNG TÀI SẢN (Sạch + Bẩn + Đang Dùng + Tại Xưởng) thay vì chỉ Kho Sạch
       const totalInventoryValue = services.reduce((sum, s) => {
           // Ưu tiên dùng trường totalassets nếu có, nếu không thì cộng dồn các kho
           const totalQty = Number(s.totalassets) > 0 
               ? Number(s.totalassets) 
-              : (Number(s.stock) || 0) + (Number(s.laundryStock) || 0) + (Number(s.in_circulation) || 0);
+              : (Number(s.stock) || 0) + (Number(s.laundryStock) || 0) + (Number(s.vendor_stock) || 0) + (Number(s.in_circulation) || 0);
           
           return sum + (totalQty * (Number(s.costPrice) || 0));
       }, 0);
@@ -124,7 +124,7 @@ export const Inventory: React.FC = () => {
           if(s.category === 'Service') return;
           const totalQty = Number(s.totalassets) > 0 
               ? Number(s.totalassets) 
-              : (Number(s.stock) || 0) + (Number(s.laundryStock) || 0) + (Number(s.in_circulation) || 0);
+              : (Number(s.stock) || 0) + (Number(s.laundryStock) || 0) + (Number(s.vendor_stock) || 0) + (Number(s.in_circulation) || 0);
           const val = totalQty * (Number(s.costPrice) || 0);
           categoryValue[s.category] = (categoryValue[s.category] || 0) + val;
       });
@@ -133,15 +133,16 @@ export const Inventory: React.FC = () => {
       const linenItems = services.filter(s => s.category === 'Linen');
       const totalLinenClean = linenItems.reduce((sum, s) => sum + (Number(s.stock) || 0), 0);
       const totalLinenDirty = linenItems.reduce((sum, s) => sum + (Number(s.laundryStock) || 0), 0);
+      const totalLinenVendor = linenItems.reduce((sum, s) => sum + (Number(s.vendor_stock) || 0), 0);
       const totalLinenInUse = linenItems.reduce((sum, s) => sum + (Number(s.in_circulation) || 0), 0);
-      const totalLinenAssets = totalLinenClean + totalLinenDirty + totalLinenInUse;
+      const totalLinenAssets = totalLinenClean + totalLinenDirty + totalLinenInUse + totalLinenVendor;
 
       return { 
           totalInventoryValue, 
           lowStockList, 
           outOfStockList, 
           categoryValue,
-          linenStats: { clean: totalLinenClean, dirty: totalLinenDirty, inUse: totalLinenInUse, total: totalLinenAssets }
+          linenStats: { clean: totalLinenClean, dirty: totalLinenDirty, vendor: totalLinenVendor, inUse: totalLinenInUse, total: totalLinenAssets }
       };
   }, [services]);
 
@@ -158,6 +159,10 @@ export const Inventory: React.FC = () => {
 
   // --- NEW BULK LAUNDRY LOGIC ---
   const handleBulkLaundrySubmit = async (mode: 'SEND' | 'RECEIVE', items: { itemId: string; quantity: number; damage: number }[]) => {
+      // NOTE: This function is preserved here if needed for direct calls from Inventory header,
+      // but LinenManager now handles its own logic internally. 
+      // If we keep the header button, we should duplicate logic or move logic to a hook.
+      // For now, let's keep it consistent with LinenManager's logic.
       const batchId = `BATCH-${mode === 'SEND' ? 'OUT' : 'IN'}-${Date.now()}`;
       const timestamp = new Date().toISOString();
 
@@ -170,12 +175,12 @@ export const Inventory: React.FC = () => {
           let note = `${mode === 'SEND' ? 'Gửi giặt' : 'Nhận giặt'} theo phiếu #${batchId}`;
 
           if (mode === 'SEND') {
-               // Clean -> Dirty
-               const qty = Math.min(item.quantity, service.stock || 0);
+               // Hotel Dirty -> Vendor Stock
+               const qty = Math.min(item.quantity, service.laundryStock || 0);
                if (qty <= 0) continue;
 
-               newItem.stock = (newItem.stock || 0) - qty;
-               newItem.laundryStock = (newItem.laundryStock || 0) + qty;
+               newItem.laundryStock = (newItem.laundryStock || 0) - qty;
+               newItem.vendor_stock = (newItem.vendor_stock || 0) + qty;
 
                await updateService(newItem);
                await addInventoryTransaction({
@@ -193,13 +198,13 @@ export const Inventory: React.FC = () => {
                    note: note
                });
           } else {
-               // Dirty -> Clean
-               const qty = Math.min(item.quantity, service.laundryStock || 0);
+               // Vendor Stock -> Clean Stock
+               const qty = Math.min(item.quantity, service.vendor_stock || 0);
                if (qty <= 0) continue;
 
                const cleanReturn = qty - item.damage;
                
-               newItem.laundryStock = (newItem.laundryStock || 0) - qty;
+               newItem.vendor_stock = (newItem.vendor_stock || 0) - qty;
                newItem.stock = (newItem.stock || 0) + cleanReturn;
                
                if (item.damage > 0) {
@@ -268,30 +273,6 @@ export const Inventory: React.FC = () => {
                 };
             }
         } 
-        else if (modalMode === 'SendLaundry') {
-            transType = 'LAUNDRY_SEND';
-            if((Number(newItem.stock) || 0) < actionQty) {
-                notify('error', 'Không đủ tồn kho sạch để gửi giặt');
-                setIsSubmitting(false);
-                return;
-            }
-            newItem.stock = (Number(newItem.stock) || 0) - actionQty;
-            newItem.laundryStock = (Number(newItem.laundryStock) || 0) + actionQty;
-        } 
-        else if (modalMode === 'ReceiveLaundry') {
-            transType = 'LAUNDRY_RECEIVE';
-            if((Number(newItem.laundryStock) || 0) < actionQty) {
-                notify('error', 'Số lượng nhận vượt quá số lượng đang giặt');
-                setIsSubmitting(false);
-                return;
-            }
-            const actualReturn = actionQty - damageQty;
-            newItem.laundryStock = (Number(newItem.laundryStock) || 0) - actionQty;
-            newItem.stock = (Number(newItem.stock) || 0) + actualReturn;
-            if (damageQty > 0) {
-                newItem.totalassets = (Number(newItem.totalassets) || 0) - damageQty;
-            }
-        }
         else if (modalMode === 'Liquidate') {
             transType = 'OUT';
             if((Number(newItem.stock) || 0) < actionQty) {
@@ -355,6 +336,7 @@ export const Inventory: React.FC = () => {
                  minStock: Number(editForm.minStock ?? 0),
                  category: editForm.category ?? 'Service',
                  laundryStock: Number(editForm.laundryStock ?? 0),
+                 vendor_stock: Number(editForm.vendor_stock ?? 0),
                  in_circulation: Number(editForm.in_circulation ?? 0),
                  totalassets: Number(editForm.totalassets ?? 0), 
                  default_qty: Number(editForm.default_qty ?? 0)
@@ -382,6 +364,7 @@ export const Inventory: React.FC = () => {
                   id: `S${Date.now()}`,
                   totalassets: newServiceForm.stock || 0,
                   laundryStock: 0,
+                  vendor_stock: 0,
                   in_circulation: 0,
                   default_qty: newServiceForm.default_qty || 0
               };
@@ -544,7 +527,7 @@ export const Inventory: React.FC = () => {
                       })}
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-50 text-[10px] text-slate-400 italic text-center">
-                      * Dựa trên Giá vốn (Cost Price) x Tổng tài sản (Sạch+Bẩn+Dùng)
+                      * Dựa trên Giá vốn (Cost Price) x Tổng tài sản (Sạch+Bẩn+Dùng+Xưởng)
                   </div>
               </div>
           </div>
@@ -564,9 +547,6 @@ export const Inventory: React.FC = () => {
         <div className="flex gap-2 w-full md:w-auto">
             {!isReadOnly && (
             <>
-                <button onClick={() => setLaundryModalOpen(true)} className="bg-sky-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-sky-700 transition-all shadow-lg shadow-sky-100 flex-1 md:flex-none text-xs uppercase tracking-wider">
-                    <ScrollText size={18}/> Phiếu Giặt Ủi
-                </button>
                 <button onClick={() => setBulkModalOpen(true)} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex-1 md:flex-none text-xs uppercase tracking-wider">
                     <ListPlus size={18}/> Nhập Hàng Loạt
                 </button>
@@ -627,7 +607,7 @@ export const Inventory: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                activeTab !== 'Overview' && (
+                activeTab !== 'Overview' && activeTab !== 'Linen' && (
                     <div className="relative w-full md:w-80">
                         <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
                         <input 
@@ -644,7 +624,7 @@ export const Inventory: React.FC = () => {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      {activeTab === 'Overview' ? renderOverview() : (
+      {activeTab === 'Overview' ? renderOverview() : activeTab === 'Linen' ? <LinenManager /> : (
       <div className="flex-1 flex flex-col md:bg-white md:rounded-2xl md:shadow-soft md:border md:border-slate-100 md:overflow-hidden md:min-h-[300px]">
         {activeTab === 'History' ? (
             <div className="md:flex-1 md:overflow-x-auto md:overflow-y-auto md:custom-scrollbar">
@@ -749,32 +729,7 @@ export const Inventory: React.FC = () => {
                 <div className="hidden md:block">
                     <table className="w-full text-left text-sm border-collapse">
                         <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px] tracking-widest border-b border-slate-100 sticky top-0 z-10">
-                            {activeTab === 'Linen' ? (
-                                <tr>
-                                    <th className="p-5">Tên Đồ Vải</th>
-                                    <th className="p-5 text-center bg-blue-50/50 text-blue-700">Đang Dùng (In Room)</th>
-                                    <th className="p-5 text-center bg-emerald-50/50 text-emerald-700">Kho Sạch (Stock)</th>
-                                    <th className="p-5 text-center bg-rose-50/50 text-rose-700">Kho Bẩn (Laundry)</th>
-                                    <th className="p-5 text-center font-black text-slate-800">
-                                        <div className="flex items-center justify-center gap-1">
-                                            Tổng Thực Tế
-                                            <span title="= Đang dùng + Kho Sạch + Kho Bẩn">
-                                                <HelpCircle size={12} className="text-slate-400 cursor-help"/>
-                                            </span>
-                                        </div>
-                                    </th>
-                                    <th className="p-5 text-center font-black text-slate-800">
-                                        <div className="flex items-center justify-center gap-1">
-                                            Database (Tổng)
-                                            <span title="Tổng số lượng đang sở hữu trên sổ sách">
-                                                <Info size={12} className="text-slate-400 cursor-help" />
-                                            </span>
-                                        </div>
-                                    </th>
-                                    <th className="p-5 text-center">Đối Soát (Lệch)</th>
-                                    <th className="p-5 text-center">Thao tác</th>
-                                </tr>
-                            ) : activeTab === 'Asset' ? (
+                            {activeTab === 'Asset' ? (
                                 <tr>
                                     <th className="p-5">Tên Tài Sản</th>
                                     <th className="p-5 text-center bg-blue-50/50 text-blue-700">Đang Dùng (Trong phòng)</th>
@@ -821,15 +776,12 @@ export const Inventory: React.FC = () => {
                                 if (activeTab === 'Asset') {
                                     // Asset ignores Laundry Stock
                                     currentTotalCycle = (Number(item.stock) || 0) + inRoom;
-                                } else {
-                                    // Linen includes Laundry Stock
-                                    currentTotalCycle = (Number(item.stock) || 0) + (Number(item.laundryStock) || 0) + inRoom;
                                 }
 
                                 const recordedTotal = Number(item.totalassets) || 0;
                                 const variance = currentTotalCycle - recordedTotal; 
 
-                                if (activeTab === 'Linen' || activeTab === 'Asset') return (
+                                if (activeTab === 'Asset') return (
                                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors group">
                                         <td className="p-5">
                                             <div className="font-black text-slate-800">{item.name}</div>
@@ -846,19 +798,10 @@ export const Inventory: React.FC = () => {
                                             <div className="flex flex-col items-center">
                                                 <span className="text-emerald-700 font-black text-base">{item.stock || 0}</span>
                                                 <span className="text-[9px] text-emerald-400 font-bold uppercase mt-1">
-                                                    {activeTab === 'Asset' ? 'Dự phòng' : 'Sẵn sàng'}
+                                                    Dự phòng
                                                 </span>
                                             </div>
                                         </td>
-                                        
-                                        {/* Hide Laundry Column for Asset Tab */}
-                                        {activeTab === 'Linen' && (
-                                            <td className="p-5 text-center bg-rose-50/20">
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-rose-700 font-black text-base">{item.laundryStock || 0}</span>
-                                                </div>
-                                            </td>
-                                        )}
 
                                         <td className="p-5 text-center">
                                             <div className="font-black text-lg text-slate-800">{currentTotalCycle}</div>
@@ -888,11 +831,6 @@ export const Inventory: React.FC = () => {
                                                 {!isReadOnly && (
                                                 <>
                                                 <button onClick={() => openTransaction(item, 'Purchase')} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Nhập hàng mới / Tăng tài sản"><Plus size={18}/></button>
-                                                
-                                                {/* Only show Send Laundry for Linen */}
-                                                {activeTab === 'Linen' && (
-                                                    <button onClick={() => openTransaction(item, 'SendLaundry')} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Gửi đồ đi giặt (Sạch -> Bẩn)"><Repeat size={18}/></button>
-                                                )}
                                                 
                                                 <button onClick={() => openTransaction(item, 'Liquidate')} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Thanh lý / Hủy / Vỡ"><Trash2 size={18}/></button>
                                                 <button onClick={() => { setEditForm(item); setEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all"><Pencil size={18}/></button>
@@ -972,13 +910,7 @@ export const Inventory: React.FC = () => {
                                    )}
                                </div>
                                
-                               {activeTab === 'Linen' ? (
-                                   <div className="w-full h-2 bg-slate-100 rounded-full mb-3 overflow-hidden flex">
-                                       <div className="bg-emerald-500 h-full" style={{ width: `${(item.stock || 0) / (item.totalassets || 1) * 100}%` }} title="Sạch"></div>
-                                       <div className="bg-blue-500 h-full" style={{ width: `${(item.in_circulation || 0) / (item.totalassets || 1) * 100}%` }} title="Đang dùng"></div>
-                                       <div className="bg-rose-500 h-full" style={{ width: `${(item.laundryStock || 0) / (item.totalassets || 1) * 100}%` }} title="Bẩn"></div>
-                                   </div>
-                               ) : activeTab === 'Asset' ? (
+                               {activeTab === 'Asset' ? (
                                    <div className="w-full h-2 bg-slate-100 rounded-full mb-3 overflow-hidden flex">
                                        <div className="bg-emerald-500 h-full" style={{ width: `${(item.stock || 0) / (item.totalassets || 1) * 100}%` }} title="Dự phòng"></div>
                                        <div className="bg-blue-500 h-full" style={{ width: `${(item.in_circulation || 0) / (item.totalassets || 1) * 100}%` }} title="Đang dùng"></div>
@@ -989,11 +921,11 @@ export const Inventory: React.FC = () => {
                                    </div>
                                )}
 
-                               {(item.category === 'Linen' || item.category === 'Asset') ? (
-                                   <div className="grid grid-cols-3 gap-2 mb-4">
+                               {item.category === 'Asset' ? (
+                                   <div className="grid grid-cols-2 gap-2 mb-4">
                                        <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
                                            <div className="text-[10px] font-bold text-slate-400 uppercase">
-                                               {item.category === 'Asset' ? 'Dự Phòng' : 'Kho Sạch'}
+                                               Dự Phòng
                                            </div>
                                            <div className={`font-black text-sm ${isLow ? 'text-rose-600' : 'text-emerald-600'}`}>{item.stock}</div>
                                        </div>
@@ -1001,12 +933,6 @@ export const Inventory: React.FC = () => {
                                            <div className="text-[10px] font-bold text-slate-400 uppercase">Đang Dùng</div>
                                            <div className="font-bold text-blue-600 text-sm">{item.in_circulation || 0}</div>
                                        </div>
-                                       {item.category === 'Linen' && (
-                                           <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
-                                               <div className="text-[10px] font-bold text-slate-400 uppercase">Kho Bẩn</div>
-                                               <div className="font-bold text-rose-600 text-sm">{item.laundryStock || 0}</div>
-                                           </div>
-                                       )}
                                    </div>
                                ) : (
                                    <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1026,20 +952,12 @@ export const Inventory: React.FC = () => {
                                )}
 
                                {!isReadOnly && (
-                               <div className="grid grid-cols-3 gap-2">
+                               <div className="grid grid-cols-2 gap-2">
                                    <button onClick={() => openTransaction(item, 'Purchase')} className="py-3 bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-100 font-bold text-xs rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
                                        <Plus size={18} strokeWidth={2.5}/> Nhập
                                    </button>
                                    
-                                   {activeTab === 'Linen' ? (
-                                       <button onClick={() => openTransaction(item, 'SendLaundry')} className="py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 font-bold text-xs rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
-                                           <Repeat size={18} strokeWidth={2.5}/> Giặt
-                                       </button>
-                                   ) : (
-                                       <div className="hidden"></div>
-                                   )}
-                                   
-                                   <button onClick={() => openTransaction(item, 'Liquidate')} className={`py-3 bg-white text-rose-600 hover:bg-rose-50 border border-rose-100 font-bold text-xs rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all ${activeTab !== 'Linen' ? 'col-span-2' : ''}`}>
+                                   <button onClick={() => openTransaction(item, 'Liquidate')} className={`py-3 bg-white text-rose-600 hover:bg-rose-50 border border-rose-100 font-bold text-xs rounded-xl flex flex-col items-center justify-center gap-1 active:scale-95 transition-all`}>
                                        <Trash2 size={18} strokeWidth={2.5}/> Hủy
                                    </button>
                                 </div>
@@ -1259,7 +1177,17 @@ export const Inventory: React.FC = () => {
                       />
                   </div>
                   <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trong phòng (In Circulation)</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tại Xưởng (Công Nợ)</label>
+                      <input 
+                          type="number" 
+                          className="w-full border-2 border-slate-100 rounded-xl p-3 bg-white font-black text-slate-800 outline-none focus:border-brand-500" 
+                          value={editForm.vendor_stock ?? 0} 
+                          onChange={e => setEditForm({...editForm, vendor_stock: Number(e.target.value)})} 
+                          disabled={editForm.category !== 'Linen'}
+                      />
+                  </div>
+                  <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trong phòng (In Room)</label>
                       <input 
                           type="number" 
                           className="w-full border-2 border-slate-100 rounded-xl p-3 bg-white font-black text-slate-800 outline-none focus:border-brand-500" 
@@ -1301,12 +1229,6 @@ export const Inventory: React.FC = () => {
       <BulkImportModal 
           isOpen={isBulkModalOpen}
           onClose={() => setBulkModalOpen(false)}
-      />
-
-      <LaundryTicketModal
-          isOpen={isLaundryModalOpen}
-          onClose={() => setLaundryModalOpen(false)}
-          onConfirm={handleBulkLaundrySubmit}
       />
     </div>
   );

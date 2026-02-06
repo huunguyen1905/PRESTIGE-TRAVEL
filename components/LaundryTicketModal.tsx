@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Modal } from './Modal';
 import { useAppContext } from '../context/AppContext';
 import { ServiceItem } from '../types';
-import { ArrowRight, ArrowLeft, AlertTriangle, Loader2, Save, Shirt, Search, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, AlertTriangle, Loader2, Save, Shirt, Search, CheckCircle2, Truck } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -36,7 +36,7 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
 
   const linenItems = useMemo(() => {
     return services.filter(s => 
-      s.category === 'Linen' && // Only Linen, Assets don't go to laundry
+      s.category === 'Linen' && 
       s.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [services, searchTerm]);
@@ -44,9 +44,7 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
   const handleQuantityChange = (itemId: string, val: string, max: number) => {
     let qty = parseInt(val) || 0;
     if (qty < 0) qty = 0;
-    // Optional: cap at max stock? 
-    // Allowing flexible input but showing warning might be better UX, 
-    // but strict validation prevents errors. Let's strict cap for safety.
+    // Cap at available stock
     if (qty > max) qty = max;
     
     setQuantities(prev => ({ ...prev, [itemId]: qty }));
@@ -62,11 +60,12 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
 
   const handleSubmit = async () => {
     const itemsToProcess = Object.entries(quantities)
-      .filter(([_, qty]) => (qty as number) > 0)
-      .map(([itemId, qty]) => ({
-        itemId,
-        quantity: qty as number,
-        damage: (damages[itemId] as number) || 0
+      .map(([id, q]) => ({ id, qty: Number(q) }))
+      .filter(({ qty }) => qty > 0)
+      .map(({ id, qty }) => ({
+        itemId: id,
+        quantity: qty,
+        damage: Number(damages[id] || 0)
       }));
 
     if (itemsToProcess.length === 0) {
@@ -80,11 +79,11 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
     onClose();
   };
 
-  const totalSelected = Object.values(quantities).reduce((a: number, b: number) => a + b, 0);
-  const totalDamaged = Object.values(damages).reduce((a: number, b: number) => a + b, 0);
+  const totalSelected = (Object.values(quantities) as number[]).reduce((a, b) => a + b, 0);
+  const totalDamaged = (Object.values(damages) as number[]).reduce((a, b) => a + b, 0);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Phiếu Giao Nhận Giặt Ủi (Hàng Loạt)" size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="Phiếu Giao Nhận Giặt Ủi (Công Nợ)" size="xl">
         <div className="flex flex-col h-[80vh] md:h-[700px]">
             {/* Header / Mode Switcher */}
             <div className="shrink-0 space-y-4 mb-4">
@@ -93,13 +92,13 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
                         onClick={() => { setMode('SEND'); setQuantities({}); setDamages({}); }}
                         className={`flex-1 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${mode === 'SEND' ? 'bg-white text-blue-600 shadow-sm border border-blue-100' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        <ArrowRight size={18} /> Gửi đi giặt (Kho Sạch &rarr; Kho Bẩn)
+                        <Truck size={18} /> Gửi đi giặt (Kho Bẩn &rarr; Nhà Giặt)
                     </button>
                     <button 
                         onClick={() => { setMode('RECEIVE'); setQuantities({}); setDamages({}); }}
                         className={`flex-1 py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${mode === 'RECEIVE' ? 'bg-white text-emerald-600 shadow-sm border border-emerald-100' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        <ArrowLeft size={18} /> Nhận đồ sạch (Kho Bẩn &rarr; Kho Sạch)
+                        <ArrowLeft size={18} /> Nhận đồ sạch (Nhà Giặt &rarr; Kho Sạch)
                     </button>
                 </div>
 
@@ -123,7 +122,7 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
                             <tr>
                                 <th className="p-3 pl-4 w-[40%]">Tên Đồ Vải</th>
                                 <th className="p-3 text-center">
-                                    {mode === 'SEND' ? 'Tồn Kho Sạch' : 'Đang Giặt (Kho Bẩn)'}
+                                    {mode === 'SEND' ? 'Kho Bẩn (Tại KS)' : 'Tại Xưởng (Công Nợ)'}
                                 </th>
                                 <th className="p-3 text-center w-24">SL Giao/Nhận</th>
                                 {mode === 'RECEIVE' && <th className="p-3 text-center w-24 text-rose-600">Hỏng/Rách</th>}
@@ -131,10 +130,13 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                             {linenItems.map(item => {
-                                const maxQty = mode === 'SEND' ? (item.stock || 0) : (item.laundryStock || 0);
+                                // Updated Logic: 
+                                // SEND: Max = laundryStock (Dirty items at Hotel)
+                                // RECEIVE: Max = vendor_stock (Items held by Vendor)
+                                const maxQty = mode === 'SEND' ? (item.laundryStock || 0) : (item.vendor_stock || 0);
                                 const currentQty = quantities[item.id] || '';
                                 const currentDmg = damages[item.id] || '';
-                                const currentQtyValue = (quantities[item.id] as number) || 0;
+                                const currentQtyValue = quantities[item.id] || 0;
                                 const isSelected = currentQtyValue > 0;
 
                                 return (
@@ -166,7 +168,7 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
                                                     className="w-full border-2 border-slate-200 rounded-lg p-1.5 text-center font-bold outline-none focus:border-rose-400 bg-white text-rose-600 placeholder-slate-300"
                                                     placeholder="0"
                                                     value={currentDmg}
-                                                    onChange={e => handleDamageChange(item.id, e.target.value, (quantities[item.id] as number) || 0)}
+                                                    onChange={e => handleDamageChange(item.id, e.target.value, quantities[item.id] || 0)}
                                                     disabled={!isSelected}
                                                 />
                                             </td>
@@ -214,7 +216,7 @@ export const LaundryTicketModal: React.FC<Props> = ({ isOpen, onClose, onConfirm
                     disabled={totalSelected === 0 || isSubmitting}
                     className={`flex-[2] py-3 text-white font-black rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${mode === 'SEND' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}
                 >
-                    {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : (mode === 'SEND' ? <ArrowRight size={20}/> : <CheckCircle2 size={20}/>)}
+                    {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : (mode === 'SEND' ? <Truck size={20}/> : <CheckCircle2 size={20}/>)}
                     {mode === 'SEND' ? 'XÁC NHẬN GỬI ĐI' : 'XÁC NHẬN NHẬP KHO'}
                 </button>
             </div>

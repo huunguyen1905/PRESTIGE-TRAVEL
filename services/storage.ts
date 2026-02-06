@@ -815,6 +815,7 @@ export const storageService = {
         costPrice: s.costprice ?? s.costPrice ?? 0,
         minStock: s.minstock ?? s.minStock ?? 0,
         laundryStock: s.laundrystock ?? s.laundryStock ?? 0,
+        vendor_stock: s.vendor_stock ?? 0, // NEW MAPPING
         in_circulation: s.in_circulation ?? 0,
         totalassets: s.totalassets ?? 0,
         default_qty: s.default_qty ?? 0
@@ -833,6 +834,7 @@ export const storageService = {
         costprice: item.costPrice,
         minstock: item.minStock,
         laundrystock: item.laundryStock,
+        vendor_stock: item.vendor_stock, // NEW PAYLOAD
         in_circulation: item.in_circulation,
         totalassets: item.totalassets,
         default_qty: item.default_qty
@@ -842,7 +844,7 @@ export const storageService = {
     if (error) {
         if (isColumnMissingError(error)) {
             // Legacy Fallback if needed, though schema usually exists
-            const { costprice, minstock, laundrystock, in_circulation, totalassets, default_qty, ...legacyPayload } = dbPayload;
+            const { costprice, minstock, laundrystock, vendor_stock, in_circulation, totalassets, default_qty, ...legacyPayload } = dbPayload;
             const { error: retryError } = await supabase.from('service_items').insert(legacyPayload);
             if (retryError) logError('Error adding service (Legacy)', retryError);
         } else {
@@ -865,6 +867,7 @@ export const storageService = {
         costprice: item.costPrice,
         minstock: item.minStock,
         laundrystock: item.laundryStock,
+        vendor_stock: item.vendor_stock, // NEW PAYLOAD
         in_circulation: item.in_circulation,
         totalassets: item.totalassets,
         default_qty: item.default_qty
@@ -873,7 +876,7 @@ export const storageService = {
     const { error } = await supabase.from('service_items').upsert(dbPayload);
     if (error) {
         if (isColumnMissingError(error)) {
-            const { costprice, minstock, laundrystock, in_circulation, totalassets, default_qty, ...legacyPayload } = dbPayload;
+            const { costprice, minstock, laundrystock, vendor_stock, in_circulation, totalassets, default_qty, ...legacyPayload } = dbPayload;
             const { error: retryError } = await supabase.from('service_items').upsert(legacyPayload);
             if (retryError) logError('Error updating service (Legacy)', retryError);
         } else {
@@ -1015,6 +1018,7 @@ export const storageService = {
             category: s.category,
             totalassets: s.stock || 100,
             laundrystock: 0,
+            vendor_stock: 0,
             in_circulation: 0,
             default_qty: dqty
          };

@@ -163,9 +163,10 @@ export interface ServiceItem {
   stock: number; // Kho Sạch: Sẵn sàng sử dụng
   minStock: number; 
   category: ItemCategory; 
-  laundryStock?: number; // Kho Bẩn: Đang chờ giặt/tại xưởng
+  laundryStock?: number; // Kho Bẩn: Đang chờ giặt (tại KS)
+  vendor_stock?: number; // Tại Xưởng: Đang ở nhà giặt (Công nợ)
   in_circulation?: number; // Đang trong phòng (Theo định mức hoặc khách mượn)
-  totalassets?: number; // Tổng tài sản (Sạch + Bẩn + Đang trong phòng)
+  totalassets?: number; // Tổng tài sản
   default_qty?: number; // Định mức chuẩn cho mỗi phòng (vd: 2 khăn/phòng)
   created_at?: string;
 }
