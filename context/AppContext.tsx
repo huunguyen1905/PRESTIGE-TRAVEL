@@ -5,7 +5,7 @@ import {
   Shift, ShiftSchedule, AttendanceAdjustment, LeaveRequest, 
   HousekeepingTask, WebhookConfig, InventoryTransaction, 
   Settings, RoomRecipe, BankAccount, TimeLog, OtaOrder, 
-  ToastMessage, GuestProfile, LendingItem, SalaryAdvance, Violation
+  ToastMessage, GuestProfile, LendingItem, SalaryAdvance, Violation, BulkImportItem
 } from '../types';
 import { ROLE_PERMISSIONS, DEFAULT_SETTINGS } from '../constants';
 import { storageService } from '../services/storage';
@@ -73,6 +73,7 @@ interface AppContextType {
   
   syncHousekeepingTasks: (tasks: HousekeepingTask[]) => Promise<void>;
   addInventoryTransaction: (item: InventoryTransaction) => Promise<void>;
+  processBulkImport: (items: BulkImportItem[], totalAmount: number, note: string, facilityName: string, evidenceUrl?: string) => Promise<void>;
   
   openShift: (startCash: number) => Promise<void>;
   closeShift: (endCash: number, note: string, stats: { revenue: number; expense: number; expected: number }) => Promise<void>;
@@ -303,6 +304,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncHousekeepingTasks = async (tasks: HousekeepingTask[]) => { await storageService.syncHousekeepingTasks(tasks); refreshData(); };
   
   const addInventoryTransaction = async (item: InventoryTransaction) => { await storageService.addInventoryTransaction(item); refreshData(); };
+
+  const processBulkImport = async (items: BulkImportItem[], totalAmount: number, note: string, facilityName: string, evidenceUrl?: string) => {
+      const batchId = `IMP-${Date.now()}`;
+      const fullNote = `${note} (Mã phiếu: ${batchId})`;
+
+      // 1. Create one Expense if totalAmount > 0
+      if (totalAmount > 0) {
+          const expense: Expense = {
+              id: `EXP-${batchId}`,
+              expenseDate: new Date().toISOString().substring(0, 10),
+              facilityName: facilityName, 
+              expenseCategory: 'Nhập hàng',
+              expenseContent: `Nhập kho hàng loạt (${items.length} món)`,
+              amount: totalAmount,
+              note: `Bằng chứng: ${evidenceUrl || 'N/A'}. ${fullNote}`
+          };
+          await storageService.addExpense(expense);
+      }
+
+      // 2. Loop Items
+      // We process sequentially to avoid potential race conditions on same row if duplicate items exist in array
+      for (const item of items) {
+          // Find current service state
+          const service = services.find(s => s.id === item.itemId);
+          if (service) {
+              const newStock = (service.stock || 0) + item.importQuantity;
+              
+              // Determine Total Assets update logic
+              let newTotalAssets = service.totalassets || 0;
+              if (service.category === 'Linen' || service.category === 'Asset') {
+                   // For Fixed Assets, importing increases total ownership
+                   newTotalAssets = (service.totalassets || 0) + item.importQuantity;
+              } else {
+                   // For Consumables, Total Assets usually tracks Stock or we just sync it
+                   newTotalAssets = newStock; 
+              }
+
+              const updatedService: ServiceItem = {
+                  ...service,
+                  stock: newStock,
+                  costPrice: item.importPrice, // Update latest cost price
+                  totalassets: newTotalAssets
+              };
+
+              // Update Service
+              await storageService.updateService(updatedService);
+
+              // Log Transaction
+              const trans: InventoryTransaction = {
+                  id: `TR-${batchId}-${item.itemId}`,
+                  created_at: new Date().toISOString(),
+                  staff_id: currentUser?.id || 'SYS',
+                  staff_name: currentUser?.collaboratorName || 'System',
+                  item_id: item.itemId,
+                  item_name: item.itemName,
+                  type: 'IN',
+                  quantity: item.importQuantity,
+                  price: item.importPrice,
+                  total: item.importQuantity * item.importPrice,
+                  evidence_url: evidenceUrl,
+                  note: fullNote,
+                  facility_name: facilityName
+              };
+              await storageService.addInventoryTransaction(trans);
+          }
+      }
+      
+      await refreshData();
+  };
 
   // --- SHIFTS ---
   const openShift = async (startCash: number) => {
@@ -711,7 +781,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncOtaOrders, queryOtaOrders, updateOtaOrder, deleteOtaOrder, confirmOtaCancellation,
       
       processMinibarUsage, processLendingUsage, processRoomRestock,
-      processCheckoutLinenReturn, handleLinenExchange
+      processCheckoutLinenReturn, handleLinenExchange, processBulkImport
     }}>
       {children}
     </AppContext.Provider>

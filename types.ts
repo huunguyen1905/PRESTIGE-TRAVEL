@@ -167,6 +167,16 @@ export interface ServiceItem {
   created_at?: string;
 }
 
+// Interface for Bulk Import
+export interface BulkImportItem {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  currentStock: number;
+  importQuantity: number;
+  importPrice: number;
+}
+
 export interface RoomRecipeItem {
     itemId: string; // Link tới ServiceItem.id hoặc ServiceItem.name
     quantity: number;
