@@ -261,20 +261,21 @@ export const StaffPortal: React.FC = () => {
 
       if (booking && booking.lendingJson) {
           try {
-              const lends: LendingItem[] = JSON.parse(booking.lendingJson);
+              const lends: any[] = JSON.parse(booking.lendingJson);
               lends.forEach(l => {
-                  if (l.quantity > 0) {
+                  const qty = Number(l.quantity);
+                  if (qty > 0) {
                       const existing = combinedMap.get(l.item_id);
                       if (existing) {
-                          existing.totalQty += l.quantity;
-                          existing.lendingQty += l.quantity;
+                          existing.totalQty += qty;
+                          existing.lendingQty += qty;
                       } else {
                           combinedMap.set(l.item_id, {
                               id: l.item_id,
                               name: l.item_name,
-                              totalQty: l.quantity,
+                              totalQty: qty,
                               standardQty: 0,
-                              lendingQty: l.quantity
+                              lendingQty: qty
                           });
                       }
                   }
@@ -360,12 +361,41 @@ export const StaffPortal: React.FC = () => {
 
       setIsProcessing(true);
       try {
-        const itemsToProcess = (Object.entries(consumedItems) as [string, number][])
-            .filter(([_, qty]) => qty > 0)
-            .map(([itemId, qty]) => ({ itemId, qty }));
+        // --- 1. CLASSIFY CONSUMED ITEMS (Split into Consumables vs Cycle Items) ---
+        const rawConsumed = Object.entries(consumedItems).filter(([_, qty]) => qty > 0);
         
-        await processMinibarUsage(activeTask.facilityName, activeTask.room_code, itemsToProcess);
+        const consumablesPayload: { itemId: string, qty: number }[] = [];
+        const cycleItemsPayload: { itemId: string, dirtyReturnQty: number, cleanRestockQty: number }[] = [];
 
+        rawConsumed.forEach(([key, qty]) => {
+            // Find service definition
+            const service = services.find(s => s.id === key || s.name === key);
+            
+            if (service && (service.category === 'Linen' || service.category === 'Asset')) {
+                // Cycle Items (Linen/Asset): SWAP LOGIC (Dirty Out = Clean In)
+                cycleItemsPayload.push({
+                    itemId: service.id,
+                    dirtyReturnQty: qty,
+                    cleanRestockQty: qty
+                });
+            } else {
+                // Consumables (Minibar/Amenity/Service): SALE LOGIC (Deduct Stock, Charge Money)
+                const idToUse = service ? service.id : key;
+                consumablesPayload.push({ itemId: idToUse, qty: qty });
+            }
+        });
+
+        // --- 2. PROCESS CONSUMABLES (Sales/Consumption) ---
+        if (consumablesPayload.length > 0) {
+            await processMinibarUsage(activeTask.facilityName, activeTask.room_code, consumablesPayload);
+        }
+
+        // --- 3. PROCESS CYCLE ITEMS (Restock/Swap) ---
+        if (cycleItemsPayload.length > 0) {
+            await processRoomRestock(activeTask.facilityName, activeTask.room_code, cycleItemsPayload);
+        }
+
+        // --- 4. CHECKOUT/DIRTY SPECIFIC LOGIC (Using Return List) ---
         let linenNote = '';
         if (activeTask.task_type === 'Checkout' || activeTask.task_type === 'Dirty') {
             const missingItems: string[] = [];
@@ -375,6 +405,7 @@ export const StaffPortal: React.FC = () => {
                 const actualDirtyCount = returnedLinenCounts[item.id] ?? item.totalQty;
                 const replenishCount = item.standardQty;
 
+                // Only add to payload if numbers are meaningful (avoid 0/0 updates)
                 if (actualDirtyCount > 0 || replenishCount > 0) {
                     restockPayload.push({
                         itemId: item.id,
@@ -397,12 +428,13 @@ export const StaffPortal: React.FC = () => {
             }
         }
         
+        // --- 5. UPDATE TASK STATUS ---
         const updatedTask: HousekeepingTask = {
             ...activeTask,
             status: 'Done',
             checklist: JSON.stringify(localChecklist),
             completed_at: new Date().toISOString(),
-            linen_exchanged: activeTask.task_type === 'Checkout' ? checkoutReturnList.reduce((sum, i) => sum + (returnedLinenCounts[i.id] ?? i.totalQty), 0) : 0,
+            linen_exchanged: activeTask.task_type === 'Checkout' ? checkoutReturnList.reduce((sum, i) => sum + (returnedLinenCounts[i.id] ?? i.totalQty), 0) : cycleItemsPayload.reduce((sum, i) => sum + i.cleanRestockQty, 0),
             note: (activeTask.note || '') + linenNote
         };
 
