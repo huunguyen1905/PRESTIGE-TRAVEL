@@ -11,7 +11,6 @@ import {
 import { format, parseISO, differenceInMinutes, isValid } from 'date-fns';
 import { HousekeepingTask, ChecklistItem, RoomRecipeItem, ServiceItem, LendingItem, Booking } from '../types';
 import { storageService } from '../services/storage';
-import { ROOM_RECIPES } from '../constants';
 
 const DEFAULT_CHECKLIST: ChecklistItem[] = [
     { id: '1', text: 'Thay ga giường và vỏ gối', completed: false },
@@ -30,7 +29,7 @@ export const StaffPortal: React.FC = () => {
   const { 
     facilities, rooms, housekeepingTasks, syncHousekeepingTasks, services, bookings,
     currentUser, setCurrentUser, notify, upsertRoom, 
-    refreshData, isLoading, processMinibarUsage, processRoomRestock
+    refreshData, isLoading, processMinibarUsage, processRoomRestock, roomRecipes
   } = useAppContext();
   
   const [activeTask, setActiveTask] = useState<(HousekeepingTask & { facilityName: string, roomType?: string }) | null>(null);
@@ -201,7 +200,8 @@ export const StaffPortal: React.FC = () => {
 
   const recipeItems = useMemo(() => {
       if (!activeTask || !activeTask.roomType) return [];
-      const recipe = ROOM_RECIPES[activeTask.roomType];
+      // Use dynamic roomRecipes from context instead of hardcoded ROOM_RECIPES
+      const recipe = roomRecipes[activeTask.roomType];
       if (!recipe) return [];
       return recipe.items.map(rItem => {
           const service = services.find(s => s.id === rItem.itemId || s.name === rItem.itemId);
@@ -211,7 +211,7 @@ export const StaffPortal: React.FC = () => {
               fallbackName: rItem.itemId
           };
       });
-  }, [activeTask, services]);
+  }, [activeTask, services, roomRecipes]);
 
   const checkoutReturnList = useMemo(() => {
       if (!activeTask) return [];
@@ -559,7 +559,7 @@ export const StaffPortal: React.FC = () => {
                     </button>
                     <div>
                         <h2 className="text-lg font-black text-slate-800">Phòng {activeTask.room_code}</h2>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{activeTask.roomType} ({ROOM_RECIPES[activeTask.roomType || '1GM8']?.description})</p>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{activeTask.roomType} ({roomRecipes[activeTask.roomType || '1GM8']?.description})</p>
                     </div>
                 </div>
 
