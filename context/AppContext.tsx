@@ -708,7 +708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const processRoomRestock = async (facilityName: string, roomCode: string, items: { itemId: string, dirtyReturnQty: number, cleanRestockQty: number }[]) => {
-      // 1. Return Dirty: In Room -> Laundry (Dirty)
+      // 1. Return Dirty: In Room -> Laundry (Dirty) OR Stock (Asset)
       // 2. Restock Clean: Stock (Clean) -> In Room
       
       for (const item of items) {
@@ -719,7 +719,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               // Return Dirty Logic
               if (item.dirtyReturnQty > 0) {
                   updatedService.in_circulation = Math.max(0, (updatedService.in_circulation || 0) - item.dirtyReturnQty);
-                  updatedService.laundryStock = (updatedService.laundryStock || 0) + item.dirtyReturnQty;
+                  
+                  if (service.category === 'Linen') {
+                      // Linen goes to Laundry
+                      updatedService.laundryStock = (updatedService.laundryStock || 0) + item.dirtyReturnQty;
+                  } else {
+                      // Asset/Amenity/Minibar returns to Clean Stock (Assumed re-usable or not counted as dirty)
+                      // If it's broken, it should be liquidated separately, but "Return" usually means "Unused/Collected"
+                      updatedService.stock = (updatedService.stock || 0) + item.dirtyReturnQty;
+                  }
               }
 
               // Restock Clean Logic

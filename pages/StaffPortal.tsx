@@ -241,9 +241,19 @@ export const StaffPortal: React.FC = () => {
 
       if (activeTask.task_type === 'Checkout') {
           booking = sortedBookings.find(b => {
-              if (b.status !== 'CheckedOut') return false;
-              const outDate = b.actualCheckOut ? b.actualCheckOut : b.checkoutDate;
-              return isValid(parseISO(outDate)) && outDate.startsWith(todayStr);
+              // Priority 1: Already CheckedOut
+              if (b.status === 'CheckedOut') {
+                  const outDate = b.actualCheckOut ? b.actualCheckOut : b.checkoutDate;
+                  // Must be recent (today)
+                  return isValid(parseISO(outDate)) && outDate.startsWith(todayStr);
+              }
+              // Priority 2: Still CheckedIn (but might be checking out now)
+              if (b.status === 'CheckedIn') {
+                  // Check if checkout date is today or passed (late checkout)
+                  const checkoutDateStr = b.checkoutDate.substring(0, 10);
+                  return checkoutDateStr <= todayStr;
+              }
+              return false;
           });
       } else if (activeTask.task_type === 'Stayover' || activeTask.task_type === 'Dirty') {
           booking = sortedBookings.find(b => b.status === 'CheckedIn');
