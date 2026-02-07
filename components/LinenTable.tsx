@@ -2,9 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ServiceItem } from '../types';
-import { ArrowRightLeft, AlertTriangle, CheckCircle2, AlertOctagon, HelpCircle, Pencil, Trash2, Save, Loader2, Search } from 'lucide-react';
+import { ArrowRightLeft, AlertTriangle, CheckCircle2, AlertOctagon, HelpCircle, Pencil, Trash2, Save, Loader2, Search, List } from 'lucide-react';
 import { LaundryTicketModal } from './LaundryTicketModal';
 import { Modal } from './Modal';
+import { LinenUsageDetailModal } from './LinenUsageDetailModal';
 
 export const LinenTable: React.FC = () => {
   const { services, updateService, deleteService, addInventoryTransaction, currentUser, facilities, notify, refreshData, rooms, roomRecipes, bookings } = useAppContext();
@@ -16,6 +17,10 @@ export const LinenTable: React.FC = () => {
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ServiceItem>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Drill-down Detail State
+  const [selectedItemDetail, setSelectedItemDetail] = useState<ServiceItem | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // --- CALCULATION LOGIC ---
   const itemStats = useMemo(() => {
@@ -227,9 +232,16 @@ export const LinenTable: React.FC = () => {
                                     <div className="font-bold text-slate-800 line-clamp-1" title={item.name}>{item.name}</div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">{item.unit}</div>
                                 </td>
-                                <td className="p-4 text-center bg-blue-50/20">
-                                    <div className="flex flex-col items-center">
-                                        <span className="font-black text-blue-700 text-lg">{inRoom}</span>
+                                <td className="p-4 text-center bg-blue-50/20 relative group/cell">
+                                    <div 
+                                        onClick={() => { setSelectedItemDetail(item); setIsDetailModalOpen(true); }}
+                                        className="flex flex-col items-center cursor-pointer p-1 rounded-lg hover:bg-blue-100/50 transition-colors"
+                                        title="Bấm để xem chi tiết ai đang mượn"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span className="font-black text-blue-700 text-lg">{inRoom}</span>
+                                            <List size={12} className="text-blue-400 opacity-50 group-hover/cell:opacity-100"/>
+                                        </div>
                                         <div className="flex flex-col items-center mt-1 space-y-1 w-full px-2">
                                             <div className="text-[10px] text-blue-400 font-medium">Chuẩn: {stdQty}</div>
                                             {lendingQty > 0 && (
@@ -332,8 +344,13 @@ export const LinenTable: React.FC = () => {
                                 <div className="text-[10px] text-emerald-600 font-black uppercase mb-1">Kho Sạch</div>
                                 <div className="text-2xl font-black text-emerald-700 leading-none">{clean}</div>
                             </div>
-                            <div className="bg-blue-50 p-2.5 rounded-xl text-center border border-blue-100">
-                                <div className="text-[10px] text-blue-600 font-black uppercase mb-1">Đang Dùng</div>
+                            <div 
+                                onClick={() => { setSelectedItemDetail(item); setIsDetailModalOpen(true); }}
+                                className="bg-blue-50 p-2.5 rounded-xl text-center border border-blue-100 cursor-pointer active:scale-95 transition-transform"
+                            >
+                                <div className="text-[10px] text-blue-600 font-black uppercase mb-1 flex items-center justify-center gap-1">
+                                    Đang Dùng <List size={10}/>
+                                </div>
                                 <div className="text-2xl font-black text-blue-700 leading-none">{inRoom}</div>
                             </div>
                             <div className="bg-rose-50 p-2.5 rounded-xl text-center border border-rose-100">
@@ -480,6 +497,13 @@ export const LinenTable: React.FC = () => {
                 </div>
             </form>
         </Modal>
+
+        {/* Drill-down Modal */}
+        <LinenUsageDetailModal
+            isOpen={isDetailModalOpen}
+            onClose={() => setIsDetailModalOpen(false)}
+            item={selectedItemDetail}
+        />
     </div>
   );
 };

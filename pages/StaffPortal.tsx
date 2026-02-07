@@ -25,6 +25,14 @@ const PlayIcon = ({ size = 20, fill = "currentColor", className = "" }) => (
   </svg>
 );
 
+interface CheckoutReturnItem {
+    id: string;
+    name: string;
+    totalQty: number;
+    standardQty: number;
+    lendingQty: number;
+}
+
 export const StaffPortal: React.FC = () => {
   const { 
     facilities, rooms, housekeepingTasks, syncHousekeepingTasks, services, bookings,
@@ -198,7 +206,7 @@ export const StaffPortal: React.FC = () => {
       });
   }, [myTasks, activeTab]);
 
-  const recipeItems = useMemo(() => {
+  const recipeItems = useMemo<Array<Partial<ServiceItem> & { requiredQty: number; fallbackName: string }>>(() => {
       if (!activeTask || !activeTask.roomType) return [];
       // Use dynamic roomRecipes from context instead of hardcoded ROOM_RECIPES
       const recipe = roomRecipes[activeTask.roomType];
@@ -206,16 +214,16 @@ export const StaffPortal: React.FC = () => {
       return recipe.items.map(rItem => {
           const service = services.find(s => s.id === rItem.itemId || s.name === rItem.itemId);
           return {
-              ...service,
+              ...(service || {}),
               requiredQty: rItem.quantity,
               fallbackName: rItem.itemId
           };
       });
   }, [activeTask, services, roomRecipes]);
 
-  const checkoutReturnList = useMemo(() => {
+  const checkoutReturnList = useMemo<CheckoutReturnItem[]>(() => {
       if (!activeTask) return [];
-      const combinedMap = new Map<string, { id: string, name: string, totalQty: number, standardQty: number, lendingQty: number }>();
+      const combinedMap = new Map<string, CheckoutReturnItem>();
 
       if (activeTask.task_type === 'Checkout') {
           recipeItems.forEach(item => {
@@ -262,7 +270,7 @@ export const StaffPortal: React.FC = () => {
       if (booking && booking.lendingJson) {
           try {
               const lends: any[] = JSON.parse(booking.lendingJson);
-              lends.forEach(l => {
+              lends.forEach((l: any) => {
                   const qty = Number(l.quantity);
                   if (qty > 0) {
                       const existing = combinedMap.get(l.item_id);
@@ -402,8 +410,8 @@ export const StaffPortal: React.FC = () => {
             const restockPayload: { itemId: string, dirtyReturnQty: number, cleanRestockQty: number }[] = [];
 
             checkoutReturnList.forEach(item => {
-                const actualDirtyCount = returnedLinenCounts[item.id] ?? item.totalQty;
-                const replenishCount = item.standardQty;
+                const actualDirtyCount = Number(returnedLinenCounts[item.id] ?? item.totalQty);
+                const replenishCount = Number(item.standardQty);
 
                 // Only add to payload if numbers are meaningful (avoid 0/0 updates)
                 if (actualDirtyCount > 0 || replenishCount > 0) {
@@ -457,6 +465,7 @@ export const StaffPortal: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl relative">
+        {/* ... (Render code remains the same) ... */}
         <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-50 shadow-sm flex justify-between items-center">
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold shadow-lg shadow-brand-200">
