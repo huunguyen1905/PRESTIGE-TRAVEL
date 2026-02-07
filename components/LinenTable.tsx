@@ -18,24 +18,18 @@ export const LinenTable: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- CALCULATION LOGIC ---
-  // Tính toán số lượng chuẩn (Standard) và đang mượn (Lending) cho từng item
   const itemStats = useMemo(() => {
       const standards: Record<string, number> = {};
       const lendings: Record<string, number> = {};
 
-      // 1. Tính tổng định mức chuẩn dựa trên số lượng phòng & công thức (Recipe)
       rooms.forEach(room => {
-          // Chỉ tính các phòng hoạt động (không phải Sửa chữa, hoặc tùy nghiệp vụ có thể tính luôn)
-          // Ở đây tính hết để đảm bảo tài sản cố định phải đủ cho cả khách sạn
           if (room.type && roomRecipes[room.type]) {
               roomRecipes[room.type].items.forEach(i => {
-                  // i.itemId là ID của ServiceItem
                   standards[i.itemId] = (standards[i.itemId] || 0) + i.quantity;
               });
           }
       });
 
-      // 2. Tính tổng số lượng khách đang mượn (Booking CheckedIn)
       bookings.filter(b => b.status === 'CheckedIn').forEach(b => {
           try {
               const items = JSON.parse(b.lendingJson || '[]');
@@ -50,7 +44,6 @@ export const LinenTable: React.FC = () => {
       return { standards, lendings };
   }, [rooms, roomRecipes, bookings]);
 
-  // Filter Linen Items
   const linenItems = useMemo(() => {
     return services.filter(s => 
         s.category === 'Linen' && 
@@ -171,27 +164,27 @@ export const LinenTable: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
         {/* Local Toolbar */}
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-4 bg-white sticky top-0 z-20">
-            <div className="relative flex-1 md:max-w-md">
+        <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-white relative md:sticky md:top-0 z-0 md:z-20 shadow-sm md:shadow-none">
+            <div className="relative w-full md:max-w-md">
                 <Search className="absolute left-3 top-2.5 text-slate-400" size={18}/>
                 <input 
                     type="text" 
                     placeholder="Tìm tên đồ vải..." 
-                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white transition-all"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
             </div>
             <button 
                 onClick={() => setLaundryModalOpen(true)}
-                className="bg-brand-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:bg-brand-700 transition-all flex items-center gap-2 whitespace-nowrap"
+                className="w-full md:w-auto bg-brand-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-brand-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
             >
                 <ArrowRightLeft size={16}/> Tạo Phiếu Giao/Nhận
             </button>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto custom-scrollbar">
+        {/* DESKTOP TABLE VIEW */}
+        <div className="hidden md:block flex-1 overflow-auto custom-scrollbar">
             <table className="w-full text-left text-sm border-collapse">
                 <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px] tracking-widest border-b border-slate-200 sticky top-0 z-10">
                     <tr>
@@ -225,9 +218,6 @@ export const LinenTable: React.FC = () => {
                         // Calculated Stats
                         const stdQty = itemStats.standards[item.id] || 0;
                         const lendingQty = itemStats.lendings[item.id] || 0;
-                        
-                        // Logic suy luận: Số trong phòng (Lý thuyết) = Chuẩn + Khách mượn
-                        // Nếu thực tế (inRoom) < Lý thuyết => Thiếu
                         const theoreticalInRoom = stdQty + lendingQty;
                         const missingInRoom = theoreticalInRoom - inRoom;
 
@@ -309,6 +299,78 @@ export const LinenTable: React.FC = () => {
                     )}
                 </tbody>
             </table>
+        </div>
+
+        {/* MOBILE CARD VIEW */}
+        <div className="md:hidden space-y-4 p-4 pb-20">
+            {linenItems.map(item => {
+                const inRoom = item.in_circulation || 0;
+                const clean = item.stock || 0;
+                const dirtyAtHotel = item.laundryStock || 0;
+                const atVendor = item.vendor_stock || 0;
+                
+                const actualTotal = inRoom + clean + dirtyAtHotel + atVendor;
+                const dbTotal = item.totalassets || 0;
+                const variance = actualTotal - dbTotal;
+
+                return (
+                    <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <div className="text-lg font-black text-slate-800">{item.name}</div>
+                                <div className="text-xs text-slate-500 font-medium">{item.unit}</div>
+                            </div>
+                            <button onClick={() => handleEditClick(item)} className="p-2 bg-slate-50 rounded-full text-blue-600 border border-slate-100 shadow-sm">
+                                <Pencil size={16}/>
+                            </button>
+                        </div>
+
+                        {/* Grid Stats */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="bg-emerald-50 p-2.5 rounded-xl text-center border border-emerald-100">
+                                <div className="text-[10px] text-emerald-600 font-black uppercase mb-1">Kho Sạch</div>
+                                <div className="text-2xl font-black text-emerald-700 leading-none">{clean}</div>
+                            </div>
+                            <div className="bg-blue-50 p-2.5 rounded-xl text-center border border-blue-100">
+                                <div className="text-[10px] text-blue-600 font-black uppercase mb-1">Đang Dùng</div>
+                                <div className="text-2xl font-black text-blue-700 leading-none">{inRoom}</div>
+                            </div>
+                            <div className="bg-rose-50 p-2.5 rounded-xl text-center border border-rose-100">
+                                <div className="text-[10px] text-rose-600 font-black uppercase mb-1">Kho Bẩn</div>
+                                <div className="text-2xl font-black text-rose-700 leading-none">{dirtyAtHotel}</div>
+                            </div>
+                            <div className="bg-purple-50 p-2.5 rounded-xl text-center border border-purple-100">
+                                <div className="text-[10px] text-purple-600 font-black uppercase mb-1">Tại Xưởng</div>
+                                <div className="text-2xl font-black text-purple-700 leading-none">{atVendor}</div>
+                            </div>
+                        </div>
+
+                        {/* Footer / Variance */}
+                        <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                             <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500 font-bold">Tổng: {actualTotal}</span>
+                                <span className="text-[10px] text-slate-400">(DB: {dbTotal})</span>
+                             </div>
+                             
+                             {variance === 0 ? (
+                                <div className="text-[10px] text-emerald-600 font-black uppercase flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-full">
+                                    <CheckCircle2 size={12}/> Khớp
+                                </div>
+                             ) : (
+                                <div className={`text-[10px] font-black uppercase flex items-center gap-1 px-2 py-1 rounded-full ${variance < 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
+                                    {variance < 0 ? <AlertTriangle size={12}/> : <AlertOctagon size={12}/>}
+                                    {variance > 0 ? `Thừa ${variance}` : `Thiếu ${Math.abs(variance)}`}
+                                </div>
+                             )}
+                        </div>
+                    </div>
+                );
+            })}
+            
+            {linenItems.length === 0 && (
+                <div className="text-center py-10 text-slate-400 italic">Không tìm thấy đồ vải nào.</div>
+            )}
         </div>
 
         <LaundryTicketModal 

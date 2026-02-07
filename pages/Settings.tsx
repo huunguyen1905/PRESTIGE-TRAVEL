@@ -411,7 +411,7 @@ export const Settings: React.FC = () => {
                      <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><BedDouble size={14}/> Tổng:</span>
                      <span className="text-sm font-black text-slate-800">{rooms.length} phòng</span>
                  </div>
-                 {Object.entries(roomTypeStats).sort((a,b) => b[1] - a[1]).map(([type, count]) => (
+                 {Object.entries(roomTypeStats).sort((a,b) => Number(b[1]) - Number(a[1])).map(([type, count]) => (
                      <div key={type} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-[10px] font-medium shadow-sm">
                          <span className="text-slate-600">{type}:</span>
                          <span className="font-black text-brand-600">{count}</span>

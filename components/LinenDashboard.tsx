@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
@@ -52,23 +53,14 @@ export const LinenDashboard: React.FC = () => {
 
   // 4. BAR CHART DATA (Top Damage)
   const damageData = useMemo(() => {
-      // Find damage records from transactions
-      // Looking for "LAUNDRY_RECEIVE" type or notes containing "Hỏng" / "Rách"
       const damageCounts: Record<string, number> = {};
       
       inventoryTransactions.forEach(t => {
           const isLinen = linenItems.some(l => l.id === t.item_id);
           if (!isLinen) return;
 
-          // Check if transaction note indicates damage
           const note = (t.note || '').toLowerCase();
           if (note.includes('hỏng') || note.includes('rách') || note.includes('mất') || note.includes('damage')) {
-              // Extract number from note if possible, or assume some logic.
-              // For simplicity in this version, we will aggregate "Damage" if explicitly logged via Laundry Ticket which reduces Total Asset.
-              // A better way is to rely on `totalassets` reduction which isn't explicitly tracked as "Damage Transaction" in the standard schema 
-              // except via the note in `LAUNDRY_RECEIVE`.
-              
-              // Simple Heuristic: If note says "Hỏng: X", extract X.
               const match = note.match(/hỏng\/rách:\s*(\d+)/) || note.match(/hỏng:\s*(\d+)/);
               const qty = match ? parseInt(match[1]) : 0;
               
@@ -88,11 +80,11 @@ export const LinenDashboard: React.FC = () => {
   const lowStockItems = linenItems.filter(item => (item.stock || 0) < (item.minStock || 0));
 
   return (
-    <div className="p-4 md:p-6 space-y-6 overflow-y-auto h-full custom-scrollbar bg-slate-50/50">
+    <div className="p-4 md:p-6 space-y-6 h-auto md:h-full md:overflow-y-auto custom-scrollbar bg-slate-50/50">
         
         {/* SECTION A: KPI CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between h-28">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="col-span-2 md:col-span-1 bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between h-28">
                 <div className="flex justify-between items-start">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Giá Trị</span>
                     <div className="p-2 bg-slate-100 rounded-lg text-slate-600"><Package size={16}/></div>
@@ -133,7 +125,7 @@ export const LinenDashboard: React.FC = () => {
                 </div>
                 <div>
                     <div className="text-2xl font-black text-purple-700">{kpis.totalVendor}</div>
-                    <div className="text-[10px] text-purple-500 mt-1">Công nợ nhà giặt ({kpis.vendorDebtRatio.toFixed(1)}%)</div>
+                    <div className="text-[10px] text-purple-500 mt-1">Nợ giặt ({kpis.vendorDebtRatio.toFixed(1)}%)</div>
                 </div>
             </div>
 
@@ -150,9 +142,9 @@ export const LinenDashboard: React.FC = () => {
         </div>
 
         {/* SECTION B: CHARTS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6">
             {/* Chart 1: Distribution */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[350px]">
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[300px] md:h-[350px]">
                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide mb-4">Phân bổ Tài Sản Đồ Vải</h3>
                 <div className="flex-1 min-h-0">
                     <ResponsiveContainer width="100%" height="100%">
@@ -178,7 +170,7 @@ export const LinenDashboard: React.FC = () => {
             </div>
 
             {/* Chart 2: Top Damage */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[350px]">
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-[300px] md:h-[350px]">
                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide mb-4 flex items-center gap-2">
                     <AlertTriangle size={16} className="text-rose-500"/> Top Hư Hỏng & Mất
                 </h3>
@@ -204,7 +196,7 @@ export const LinenDashboard: React.FC = () => {
         </div>
 
         {/* SECTION C: ALERTS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex flex-col md:grid md:grid-cols-2 gap-4 pb-10 md:pb-0">
             {kpis.vendorDebtRatio > 30 && (
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-start gap-3">
                     <div className="bg-white p-2 rounded-full text-purple-600 shadow-sm shrink-0"><AlertOctagon size={20}/></div>
